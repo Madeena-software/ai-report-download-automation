@@ -752,19 +752,16 @@ class PacsBrowser:
             combo.click(timeout=3000)
             page.wait_for_timeout(500)
             dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
-            option = None
-            for text in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra"):
-                loc = dropdown.locator(".ant-select-item-option, .ant-select-item, div").filter(has_text=text)
-                try:
-                    if loc.count() and loc.first.is_visible():
-                        option = loc.first
-                        break
-                except Exception:
-                    continue
-
-            if option is not None:
+            pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra", re.I)
+            option = dropdown.locator(".ant-select-item-option, .ant-select-item-option-content, .ant-select-item").filter(has_text=pattern).first
+            if option.count() and option.is_visible():
                 option.click(timeout=3000)
-                page.wait_for_timeout(2500)
+                # Wait 8 seconds for Chest X-Ray DICOM image to finish decoding and rendering on DOM preview
+                page.wait_for_timeout(8000)
+                try:
+                    modal.locator("img").first.wait_for(state="visible", timeout=5000)
+                except Exception:
+                    pass
         except Exception:
             pass
 
