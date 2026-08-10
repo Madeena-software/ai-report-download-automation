@@ -391,6 +391,7 @@ class PacsBrowser:
         self.diagnostics_dir = Path(diagnostics_dir)
         self.headed = headed
         self.timeout_ms = timeout_ms
+        self.collector = StudyCollector(self.base_url)
         self._playwright = None
         self.browser = None
         self.context = None
@@ -452,6 +453,19 @@ class PacsBrowser:
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.timeout_ms)
         self.page.set_default_navigation_timeout(self.timeout_ms)
+
+        def on_response(response) -> None:
+            try:
+                if response.request.resource_type not in ("xhr", "fetch"):
+                    return
+                content_type = response.headers.get("content-type", "").lower()
+                if "json" not in content_type and not response.url.lower().endswith(".json"):
+                    return
+                self.collector.add_json(response.json())
+            except Exception:
+                return
+
+        self.page.on("response", on_response)
 
     def close(self) -> None:
         if self.context is not None:
@@ -597,46 +611,34 @@ class PacsBrowser:
 
     def discover_studies(self) -> list[Study]:
         page = self._require_page()
-        collector = StudyCollector(self.base_url)
+        page.goto(self.list_url, wait_until="domcontentloaded")
+        page.wait_for_timeout(1200)
+        self._collect_dom_hrefs(self.collector)
 
-        def on_response(response) -> None:
+        if not self.collector.studies():
             try:
-                if response.request.resource_type not in ("xhr", "fetch"):
-                    return
-                content_type = response.headers.get("content-type", "").lower()
-                if "json" not in content_type and not response.url.lower().endswith(".json"):
-                    return
-                collector.add_json(response.json())
-            except Exception:
-                return
-
-        page.on("response", on_response)
-        try:
-            page.goto(self.list_url, wait_until="domcontentloaded")
-            page.wait_for_timeout(1200)
-            self._collect_dom_hrefs(collector)
-
-            visited_pages = 0
-            while visited_pages < 100:
-                next_button = self._visible_next_button()
-                if next_button is None:
-                    break
-                before = page.locator("tbody").first.inner_text() if page.locator("tbody").count() else ""
-                next_button.click()
-                page.wait_for_timeout(1000)
-                self._collect_dom_hrefs(collector)
-                visited_pages += 1
-                if before and page.locator("tbody").count():
-                    after = page.locator("tbody").first.inner_text()
-                    if after == before:
-                        break
-        finally:
-            try:
-                page.remove_listener("response", on_response)
+                page.reload(wait_until="domcontentloaded")
+                page.wait_for_timeout(1500)
+                self._collect_dom_hrefs(self.collector)
             except Exception:
                 pass
 
-        return collector.studies()
+        visited_pages = 0
+        while visited_pages < 100:
+            next_button = self._visible_next_button()
+            if next_button is None:
+                break
+            before = page.locator("tbody").first.inner_text() if page.locator("tbody").count() else ""
+            next_button.click()
+            page.wait_for_timeout(1000)
+            self._collect_dom_hrefs(self.collector)
+            visited_pages += 1
+            if before and page.locator("tbody").count():
+                after = page.locator("tbody").first.inner_text()
+                if after == before:
+                    break
+
+        return self.collector.studies()
 
     def _click_first_text(self, texts: Iterable[str], label: str) -> None:
         locator = self._first_visible_text(texts)
@@ -704,7 +706,8 @@ class PacsBrowser:
         self, study: Study, screenshot_path: str | Path | None = None
     ) -> bytes:
         page = self._require_page()
-        page.goto(build_viewer_url(self.base_url, study), wait_until="domcontentloaded")
+        page.goto(build_viewer_url(self.base_url, study), wait_until="networkidle")
+        page.wait_for_timeout(2000)
 
         generate = self._first_visible_text(GENERATE_REPORT_TEXTS)
         if generate is None:
@@ -719,6 +722,15 @@ class PacsBrowser:
             generate = page.get_by_role("button", name="Generate Report", exact=False).first
 
         if screenshot_path is not None:
+            try:
+                page.wait_for_selector("canvas", state="visible", timeout=10000)
+            except Exception:
+                pass
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+            page.wait_for_timeout(3000)
             target = Path(screenshot_path)
             target.parent.mkdir(parents=True, exist_ok=True)
             temp_path = target.with_name(target.stem + ".tmp.png")
