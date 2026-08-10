@@ -95,6 +95,11 @@ class Study:
 def load_credentials(path: str | Path) -> tuple[str, str]:
     values: dict[str, str] = {}
     credential_path = Path(path)
+    if not credential_path.is_file() and credential_path.name == "credential.txt":
+        dotenv_path = credential_path.with_name(".env")
+        if dotenv_path.is_file():
+            credential_path = dotenv_path
+
     for raw_line in credential_path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:

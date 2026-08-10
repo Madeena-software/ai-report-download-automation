@@ -12,6 +12,7 @@ from pacs_batch import (
     build_viewer_url,
     extract_studies_from_hrefs,
     extract_studies_from_json,
+    load_credentials,
     parse_explicit_studies,
     report_filename,
     safe_filename,
@@ -22,6 +23,22 @@ from pacs_batch import (
 
 
 class TestPacsBatchOffline(unittest.TestCase):
+    def test_load_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dir_path = Path(tmpdir)
+            env_file = dir_path / ".env"
+            env_file.write_text("AI_PACS_USERNAME=user_env\nAI_PACS_PASSWORD=pass_env\n", encoding="utf-8")
+
+            # Fallback to .env when credential.txt does not exist
+            missing_cred = dir_path / "credential.txt"
+            u, p = load_credentials(missing_cred)
+            self.assertEqual(u, "user_env")
+            self.assertEqual(p, "pass_env")
+
+            # Direct load of .env file
+            u2, p2 = load_credentials(env_file)
+            self.assertEqual(u2, "user_env")
+            self.assertEqual(p2, "pass_env")
     def test_study_dataclass(self) -> None:
         s1 = Study(sid=33, ai_calc_id=48, patient_id="P1", patient_name="Name1")
         s2 = Study(sid=33, ai_calc_id=48, patient_id="P2", patient_name="Name2")
