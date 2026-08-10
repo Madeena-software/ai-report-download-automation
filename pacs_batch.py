@@ -275,6 +275,36 @@ def safe_filename(value: str) -> str:
     return cleaned
 
 
+def extract_patient_info_from_page(page) -> tuple[str | None, str | None]:
+    try:
+        text = page.evaluate("document.body.innerText")
+        name = None
+        patient_id = None
+
+        match_name = re.search(r"Name[：:\s]+([^\n\r]+)", text)
+        if match_name:
+            cand = match_name.group(1).strip()
+            if cand and cand != "-":
+                name = cand
+
+        match_id = re.search(r"Patient ID[：:\s]+([^\n\r]+)", text)
+        if match_id:
+            cand = match_id.group(1).strip()
+            if cand and cand != "-":
+                patient_id = cand
+
+        if not name:
+            match_header = re.search(r"Chest DR Intelligent Analysis\s*\n\s*([^\n\r]+)", text)
+            if match_header:
+                cand = match_header.group(1).strip()
+                if cand and cand != "-":
+                    name = cand
+
+        return name, patient_id
+    except Exception:
+        return None, None
+
+
 def study_stem(study: Study) -> str:
     if study.patient_name:
         cleaned = safe_filename(study.patient_name)
@@ -729,39 +759,30 @@ class PacsBrowser:
 
     def _ensure_image_report(self) -> None:
         page = self._require_page()
-        modal = page.locator(".ant-modal-content, .ant-modal, body").first
-
-        combo = None
-        for selector in (".ant-select-selector", ".ant-select", "[role=combobox]"):
-            loc = modal.locator(selector)
-            try:
-                for idx in range(min(loc.count(), 5)):
-                    item = loc.nth(idx)
-                    if item.is_visible():
-                        combo = item
-                        break
-            except Exception:
-                continue
-            if combo is not None:
-                break
-
-        if combo is None:
-            return
+        modal = page.locator(".ant-modal-content").first
+        combo = modal.locator(".ant-select-selector, .ant-select").first
 
         try:
-            combo.click(timeout=3000)
+            combo.click(timeout=5000)
             page.wait_for_timeout(500)
             dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
             pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra", re.I)
             option = dropdown.locator(".ant-select-item-option, .ant-select-item-option-content, .ant-select-item").filter(has_text=pattern).first
-            if option.count() and option.is_visible():
-                option.click(timeout=3000)
-                # Wait 8 seconds for Chest X-Ray DICOM image to finish decoding and rendering on DOM preview
-                page.wait_for_timeout(8000)
-                try:
-                    modal.locator("img").first.wait_for(state="visible", timeout=5000)
-                except Exception:
-                    pass
+            option.click(timeout=5000)
+            # Wait for modal canvas to be populated with real content
+            # (canvas.width > 100 means it's initialised; we then wait
+            #  an extra 8s so the DICOM X-Ray fully renders inside it)
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const c = document.querySelector('.ant-modal-content canvas');
+                        return c && c.width > 100 && c.height > 100;
+                    }""",
+                    timeout=15000,
+                )
+            except Exception:
+                pass
+            page.wait_for_timeout(8000)
         except Exception:
             pass
 
@@ -793,12 +814,26 @@ class PacsBrowser:
         self, study: Study, screenshot_path: str | Path | None = None
     ) -> bytes:
         page = self._require_page()
-        page.goto(build_viewer_url(self.base_url, study), wait_until="networkidle")
+        # Set Indonesian locale BEFORE navigation so i18next reads it at startup
         try:
-            page.evaluate("() => localStorage.setItem('i18nextLng', 'id')")
+            page.context.add_init_script(
+                "window.localStorage && localStorage.setItem('i18nextLng', 'id');"
+            )
+        except Exception:
+            pass
+        page.goto(build_viewer_url(self.base_url, study), wait_until="load")
+        # Belt-and-suspenders: also set after load in case init script missed
+        try:
+            page.evaluate("localStorage.setItem('i18nextLng', 'id')")
         except Exception:
             pass
         page.wait_for_timeout(2000)
+
+        ext_name, ext_id = extract_patient_info_from_page(page)
+        if ext_name and not study.patient_name:
+            object.__setattr__(study, "patient_name", ext_name)
+        if ext_id and not study.patient_id:
+            object.__setattr__(study, "patient_id", ext_id)
 
         generate = self._first_visible_text(GENERATE_REPORT_TEXTS)
         if generate is None:
@@ -841,6 +876,20 @@ class PacsBrowser:
             raise RuntimeError("Report dialog opened but Download Report did not become visible")
 
         modal = page.locator(".ant-modal-content").first
+        try:
+            modal_text = modal.inner_text()
+            m_name = re.search(r"Name[：:\s]+([^\n\r]+)", modal_text)
+            if m_name:
+                cand = m_name.group(1).strip()
+                if cand and cand != "-":
+                    object.__setattr__(study, "patient_name", cand)
+            m_id = re.search(r"Patient ID[：:\s]+([^\n\r]+)", modal_text)
+            if m_id:
+                cand = m_id.group(1).strip()
+                if cand and cand != "-":
+                    object.__setattr__(study, "patient_id", cand)
+        except Exception:
+            pass
         ai_tab = None
         for text in AI_REPORT_TEXTS:
             loc = modal.get_by_text(text, exact=False)
@@ -945,7 +994,17 @@ def download_with_retries(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            data = browser.download_report(study, screenshot_path=screenshot_target)
+            current_ss_target = ss_dir / screenshot_filename(study)
+            data = browser.download_report(study, screenshot_path=current_ss_target)
+
+            pdf_target = pdf_dir / report_filename(study)
+            final_ss_target = ss_dir / screenshot_filename(study)
+            pdf_rel = f"pdf/{pdf_target.name}"
+            ss_rel = f"ss/{final_ss_target.name}"
+
+            if current_ss_target != final_ss_target and current_ss_target.exists():
+                current_ss_target.replace(final_ss_target)
+
             atomic_save_pdf(pdf_target, data)
             return build_manifest_record(
                 study,
