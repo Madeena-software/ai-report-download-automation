@@ -254,12 +254,24 @@ def validate_pdf_bytes(data: bytes) -> None:
 
 def safe_filename(value: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
-    cleaned = cleaned.rstrip(". ")
-    return cleaned or "report"
+    cleaned = cleaned.strip(". ")
+    return cleaned
+
+
+def study_stem(study: Study) -> str:
+    if study.patient_name:
+        cleaned = safe_filename(study.patient_name)
+        if cleaned:
+            return f"{cleaned}__sid-{study.sid}__ai-{study.ai_calc_id}"
+    return f"CR-{study.sid}-AI-{study.ai_calc_id}"
 
 
 def report_filename(study: Study) -> str:
-    return safe_filename(f"CR-{study.sid}-AI-{study.ai_calc_id}.pdf")
+    return f"{study_stem(study)}.pdf"
+
+
+def screenshot_filename(study: Study) -> str:
+    return f"{study_stem(study)}.png"
 
 
 def atomic_save_pdf(path: str | Path, data: bytes) -> None:
@@ -276,18 +288,23 @@ def parse_explicit_studies(values: list[str]) -> list[Study]:
     seen: set[tuple[int, int]] = set()
     for value in values:
         try:
-            sid_text, ai_text = value.split(":", 1)
+            parts = value.split(":", 2)
+            if len(parts) == 3:
+                sid_text, ai_text, patient_name = parts
+            else:
+                sid_text, ai_text = value.split(":", 1)
+                patient_name = ""
             sid = int(sid_text)
             ai = int(ai_text)
             if sid <= 0 or ai <= 0:
                 raise ValueError
         except ValueError as exc:
             raise argparse.ArgumentTypeError(
-                f"Invalid --study {value!r}; expected SID:AICALCID, e.g. 58:50"
+                f"Invalid --study {value!r}; expected SID:AICALCID or SID:AICALCID:NAME, e.g. 58:50"
             ) from exc
         key = (sid, ai)
         if key not in seen:
-            result.append(Study(sid=sid, ai_calc_id=ai))
+            result.append(Study(sid=sid, ai_calc_id=ai, patient_name=patient_name))
             seen.add(key)
     return result
 
@@ -314,6 +331,7 @@ def build_manifest_record(
     *,
     status: str,
     output: str | None,
+    screenshot: str | None = None,
     size: int | None,
     attempts: int,
     error: str | None,
@@ -325,6 +343,7 @@ def build_manifest_record(
         "patientName": study.patient_name,
         "status": status,
         "output": output,
+        "screenshot": screenshot,
         "size": size,
         "attempts": attempts,
         "error": error,
@@ -651,7 +670,9 @@ class PacsBrowser:
         validate_pdf_bytes(data)
         return data
 
-    def download_report(self, study: Study) -> bytes:
+    def download_report(
+        self, study: Study, screenshot_path: str | Path | None = None
+    ) -> bytes:
         page = self._require_page()
         page.goto(build_viewer_url(self.base_url, study), wait_until="domcontentloaded")
 
@@ -666,6 +687,14 @@ class PacsBrowser:
                     f"Generate Report button was not found for sid={study.sid}, aiCalcId={study.ai_calc_id}"
                 ) from exc
             generate = page.get_by_role("button", name="Generate Report", exact=False).first
+
+        if screenshot_path is not None:
+            target = Path(screenshot_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = target.with_name(target.name + ".part")
+            page.screenshot(path=str(temp_path), full_page=False)
+            temp_path.replace(target)
+
         generate.click()
 
         # Wait for report rendering controls to appear.
@@ -732,16 +761,23 @@ def download_with_retries(
     overwrite: bool,
 ) -> dict[str, Any]:
     output_dir = Path(output_dir)
-    target = output_dir / report_filename(study)
+    pdf_target = output_dir / report_filename(study)
+    screenshot_target = output_dir / screenshot_filename(study)
 
-    if target.exists() and not overwrite:
+    if (
+        pdf_target.exists()
+        and screenshot_target.exists()
+        and screenshot_target.stat().st_size > 0
+        and not overwrite
+    ):
         try:
-            data = target.read_bytes()
+            data = pdf_target.read_bytes()
             validate_pdf_bytes(data)
             return build_manifest_record(
                 study,
                 status="skipped",
-                output=target.name,
+                output=pdf_target.name,
+                screenshot=screenshot_target.name,
                 size=len(data),
                 attempts=0,
                 error=None,
@@ -752,12 +788,13 @@ def download_with_retries(
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            data = browser.download_report(study)
-            atomic_save_pdf(target, data)
+            data = browser.download_report(study, screenshot_path=screenshot_target)
+            atomic_save_pdf(pdf_target, data)
             return build_manifest_record(
                 study,
                 status="succeeded",
-                output=target.name,
+                output=pdf_target.name,
+                screenshot=screenshot_target.name,
                 size=len(data),
                 attempts=attempt,
                 error=None,
@@ -769,8 +806,9 @@ def download_with_retries(
     return build_manifest_record(
         study,
         status="failed",
-        output=None,
-        size=None,
+        output=pdf_target.name if pdf_target.exists() else None,
+        screenshot=screenshot_target.name if screenshot_target.exists() else None,
+        size=pdf_target.stat().st_size if pdf_target.exists() else None,
         attempts=retries,
         error=str(last_error) if last_error else "unknown error",
     )
