@@ -904,8 +904,15 @@ def download_with_retries(
     overwrite: bool,
 ) -> dict[str, Any]:
     output_dir = Path(output_dir)
-    pdf_target = output_dir / report_filename(study)
-    screenshot_target = output_dir / screenshot_filename(study)
+    pdf_dir = output_dir / "pdf"
+    ss_dir = output_dir / "ss"
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    ss_dir.mkdir(parents=True, exist_ok=True)
+
+    pdf_target = pdf_dir / report_filename(study)
+    screenshot_target = ss_dir / screenshot_filename(study)
+    pdf_rel = f"pdf/{pdf_target.name}"
+    ss_rel = f"ss/{screenshot_target.name}"
 
     if (
         pdf_target.exists()
@@ -919,8 +926,8 @@ def download_with_retries(
             return build_manifest_record(
                 study,
                 status="skipped",
-                output=pdf_target.name,
-                screenshot=screenshot_target.name,
+                output=pdf_rel,
+                screenshot=ss_rel,
                 size=len(data),
                 attempts=0,
                 error=None,
@@ -936,8 +943,8 @@ def download_with_retries(
             return build_manifest_record(
                 study,
                 status="succeeded",
-                output=pdf_target.name,
-                screenshot=screenshot_target.name,
+                output=pdf_rel,
+                screenshot=ss_rel,
                 size=len(data),
                 attempts=attempt,
                 error=None,
@@ -949,11 +956,11 @@ def download_with_retries(
     return build_manifest_record(
         study,
         status="failed",
-        output=pdf_target.name if pdf_target.exists() else None,
-        screenshot=screenshot_target.name if screenshot_target.exists() else None,
-        size=pdf_target.stat().st_size if pdf_target.exists() else None,
+        output=None,
+        screenshot=ss_rel if screenshot_target.exists() and screenshot_target.stat().st_size > 0 else None,
+        size=None,
         attempts=retries,
-        error=str(last_error) if last_error else "unknown error",
+        error=str(last_error) if last_error else "Unknown execution failure",
     )
 
 
