@@ -64,6 +64,16 @@ def find_system_chromium() -> str | None:
         if found:
             return found
 
+    # Search user's Playwright cache directory
+    pw_cache = Path.home() / ".cache" / "ms-playwright"
+    if pw_cache.is_dir():
+        for candidate in sorted(pw_cache.glob("chromium-*/chrome-linux64/chrome"), reverse=True):
+            if candidate.is_file():
+                return str(candidate)
+        for candidate in sorted(pw_cache.glob("chromium-*/chrome-linux/chrome"), reverse=True):
+            if candidate.is_file():
+                return str(candidate)
+
     if os.name == "nt":
         roots = [
             os.environ.get("PROGRAMFILES"),
@@ -638,18 +648,33 @@ class PacsBrowser:
         page = self._require_page()
         current = self._first_visible_text(IMAGE_REPORT_TEXTS)
         if current is not None:
-            # The screenshot shows Image Report as the default selected value; visible text is sufficient.
             return
 
-        combo = self._first_visible_css(("[role=combobox]", ".ant-select-selector"))
+        modal = page.locator(".ant-modal-content, .ant-modal, body").first
+        combo = None
+        for selector in (".ant-select-selector", "[role=combobox]"):
+            loc = modal.locator(selector)
+            try:
+                for idx in range(min(loc.count(), 5)):
+                    item = loc.nth(idx)
+                    if item.is_visible():
+                        combo = item
+                        break
+            except Exception:
+                continue
+            if combo is not None:
+                break
+
         if combo is None:
-            raise RuntimeError("Could not find the report-type selector")
-        combo.click()
-        option = self._first_visible_text(IMAGE_REPORT_TEXTS)
-        if option is None:
-            raise RuntimeError("Could not find the Image Report option")
-        option.click()
-        page.wait_for_timeout(200)
+            return
+
+        try:
+            combo.click(timeout=3000)
+            option = self._first_visible_text(IMAGE_REPORT_TEXTS)
+            if option is not None:
+                option.click(timeout=3000)
+        except Exception:
+            pass
 
     def read_captured_pdf(self) -> bytes:
         page = self._require_page()
@@ -696,8 +721,8 @@ class PacsBrowser:
         if screenshot_path is not None:
             target = Path(screenshot_path)
             target.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = target.with_name(target.name + ".part")
-            page.screenshot(path=str(temp_path), full_page=False)
+            temp_path = target.with_name(target.stem + ".tmp.png")
+            page.screenshot(path=str(temp_path), full_page=False, type="png")
             temp_path.replace(target)
 
         generate.click()
