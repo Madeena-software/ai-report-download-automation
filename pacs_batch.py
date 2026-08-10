@@ -22,6 +22,7 @@ USERNAME_SELECTORS = (
     'input[name*="user" i]',
     'input[placeholder*="username" i]',
     'input[placeholder*="user name" i]',
+    'input[placeholder*="Nama Pengguna" i]',
     'input[placeholder*="用户名"]',
     'input[placeholder*="账号"]',
     'input[placeholder*="帐号"]',
@@ -31,12 +32,13 @@ PASSWORD_SELECTORS = (
     'input[type="password"]',
     'input[name="password"]',
     'input[name*="pass" i]',
+    'input[placeholder*="Kata Sandi" i]',
 )
-LOGIN_BUTTON_TEXTS = ("Login", "Sign in", "Log in", "登录", "登入")
-GENERATE_REPORT_TEXTS = ("Generate Report", "生成报告", "生成报告单")
-AI_REPORT_TEXTS = ("AI Report", "AI报告")
-IMAGE_REPORT_TEXTS = ("Image Report", "影像报告", "图像报告")
-DOWNLOAD_REPORT_TEXTS = ("Download Report", "下载报告")
+LOGIN_BUTTON_TEXTS = ("Login", "Sign in", "Log in", "Masuk", "登录", "登入")
+GENERATE_REPORT_TEXTS = ("Generate Report", "Buat Laporan", "Hasilkan Laporan", "生成报告", "生成报告单")
+AI_REPORT_TEXTS = ("AI Report", "Laporan AI", "AI报告")
+IMAGE_REPORT_TEXTS = ("Image Report", "Laporan Gambar", "Laporan Citra", "影像报告", "图像报告")
+DOWNLOAD_REPORT_TEXTS = ("Download Report", "Unduh Laporan", "下载报告")
 
 PDF_HOOK_SCRIPT = r"""
 (() => {
@@ -547,10 +549,71 @@ class PacsBrowser:
     def _password_visible(self) -> bool:
         return self._first_visible_css(PASSWORD_SELECTORS) is not None
 
+    def _select_indonesian_language(self) -> None:
+        page = self._require_page()
+        try:
+            # Top-right language dropdown trigger locator
+            triggers = (
+                ".ant-dropdown-trigger",
+                ".header-lang",
+                ".lang-select",
+                "button[class*='lang' i]",
+                "div[class*='lang' i]",
+                "span[class*='lang' i]",
+            )
+            trigger = None
+            for sel in triggers:
+                loc = page.locator(sel)
+                try:
+                    for i in range(min(loc.count(), 5)):
+                        item = loc.nth(i)
+                        if item.is_visible():
+                            trigger = item
+                            break
+                except Exception:
+                    continue
+                if trigger is not None:
+                    break
+
+            if trigger is None:
+                for text in ("Indonesian", "Bahasa Indonesia", "English", "Language"):
+                    loc = page.get_by_text(text, exact=False)
+                    try:
+                        for i in range(min(loc.count(), 5)):
+                            item = loc.nth(i)
+                            if item.is_visible():
+                                trigger = item
+                                break
+                    except Exception:
+                        continue
+                    if trigger is not None:
+                        break
+
+            if trigger is not None:
+                text = trigger.inner_text().strip()
+                if "Indonesian" in text or "Bahasa" in text:
+                    return
+                trigger.click()
+                page.wait_for_timeout(300)
+
+                for opt_text in ("Indonesian", "Bahasa Indonesia", "Indonesia"):
+                    opt = page.get_by_text(opt_text, exact=True)
+                    try:
+                        if opt.is_visible():
+                            opt.click()
+                            page.wait_for_timeout(500)
+                            return
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
     def login(self) -> None:
         page = self._require_page()
         page.goto(self.base_url + "/", wait_until="domcontentloaded")
         page.wait_for_timeout(800)
+
+        self._select_indonesian_language()
 
         password_field = self._first_visible_css(PASSWORD_SELECTORS)
         if password_field is not None:
