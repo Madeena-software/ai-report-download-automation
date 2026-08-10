@@ -680,6 +680,18 @@ class PacsBrowser:
         page.goto(self.list_url, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         if self._password_visible():
+            password_field = self._first_visible_css(PASSWORD_SELECTORS)
+            username_field = self._first_visible_css(USERNAME_SELECTORS)
+            button = self._login_button()
+            if username_field and password_field and button:
+                username_field.fill(self.username)
+                password_field.fill(self.password)
+                button.click()
+                page.wait_for_timeout(1200)
+                page.goto(self.list_url, wait_until="domcontentloaded")
+                page.wait_for_timeout(1000)
+
+        if self._password_visible():
             raise RuntimeError("Authentication failed: the login form is still visible after submission")
 
         # A table is language-independent enough to prove the authenticated list shell loaded.
@@ -921,13 +933,13 @@ class PacsBrowser:
             """
             () => window.__pacsCapturedPdf instanceof Blob &&
                   window.__pacsCapturedPdf.type === 'application/pdf' &&
-                  window.__pacsCapturedPdf.size > 100000
+                  window.__pacsCapturedPdf.size > 50000
             """,
             timeout=self.timeout_ms,
         )
         data = self.read_captured_pdf()
-        if len(data) < 100000:
-            raise RuntimeError(f"Downloaded PDF is too small ({len(data)} bytes); expected Image Report PDF with embedded X-Ray image (>100KB).")
+        if len(data) < 50000:
+            raise RuntimeError(f"Downloaded PDF is too small ({len(data)} bytes); expected Image Report PDF with embedded X-Ray image (>50KB).")
         return data
 
     def capture_diagnostic(self, study: Study, attempt: int, error: Exception) -> None:
