@@ -749,13 +749,6 @@ class PacsBrowser:
             return
 
         try:
-            current_text = combo.inner_text().strip()
-            if any(t in current_text for t in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra")):
-                return
-        except Exception:
-            pass
-
-        try:
             combo.click(timeout=3000)
             page.wait_for_timeout(500)
             dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
@@ -850,10 +843,24 @@ class PacsBrowser:
         if deadline_button is None:
             raise RuntimeError("Report dialog opened but Download Report did not become visible")
 
-        ai_tab = self._first_visible_text(AI_REPORT_TEXTS)
+        modal = page.locator(".ant-modal-content").first
+        ai_tab = None
+        for text in AI_REPORT_TEXTS:
+            loc = modal.get_by_text(text, exact=False)
+            try:
+                if loc.count() and loc.first.is_visible():
+                    ai_tab = loc.first
+                    break
+            except Exception:
+                continue
+
         if ai_tab is not None:
-            ai_tab.click()
-            page.wait_for_timeout(200)
+            try:
+                ai_tab.click(timeout=2000)
+                page.wait_for_timeout(400)
+            except Exception:
+                pass
+
         self._ensure_image_report()
 
         page.evaluate(
@@ -868,11 +875,14 @@ class PacsBrowser:
             """
             () => window.__pacsCapturedPdf instanceof Blob &&
                   window.__pacsCapturedPdf.type === 'application/pdf' &&
-                  window.__pacsCapturedPdf.size > 0
+                  window.__pacsCapturedPdf.size > 100000
             """,
             timeout=self.timeout_ms,
         )
-        return self.read_captured_pdf()
+        data = self.read_captured_pdf()
+        if len(data) < 100000:
+            raise RuntimeError(f"Downloaded PDF is too small ({len(data)} bytes); expected Image Report PDF with embedded X-Ray image (>100KB).")
+        return data
 
     def capture_diagnostic(self, study: Study, attempt: int, error: Exception) -> None:
         page = self._require_page()
