@@ -442,7 +442,11 @@ class PacsBrowser:
                 ) from exc
             raise
 
-        context_kwargs: dict[str, Any] = {"accept_downloads": True}
+        context_kwargs: dict[str, Any] = {
+            "accept_downloads": True,
+            "locale": "id-ID",
+            "extra_http_headers": {"Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"},
+        }
         if self.storage_state.is_file():
             try:
                 json.loads(self.storage_state.read_text(encoding="utf-8"))
@@ -451,6 +455,14 @@ class PacsBrowser:
                 pass
 
         self.context = self.browser.new_context(**context_kwargs)
+        self.context.add_init_script(
+            "try { "
+            "localStorage.setItem('umi_locale', 'id-ID'); "
+            "localStorage.setItem('i18nextLng', 'id'); "
+            "localStorage.setItem('locale', 'id-ID'); "
+            "localStorage.setItem('lang', 'id'); "
+            "} catch(e) {}"
+        )
         self.context.add_init_script(PDF_HOOK_SCRIPT)
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.timeout_ms)
@@ -552,7 +564,11 @@ class PacsBrowser:
     def _select_indonesian_language(self) -> None:
         page = self._require_page()
         try:
-            # Top-right language dropdown trigger locator
+            page.evaluate("() => localStorage.setItem('i18nextLng', 'id')")
+        except Exception:
+            pass
+
+        try:
             triggers = (
                 ".ant-dropdown-trigger",
                 ".header-lang",
@@ -592,6 +608,7 @@ class PacsBrowser:
             if trigger is not None:
                 text = trigger.inner_text().strip()
                 if "Indonesian" in text or "Bahasa" in text:
+                    page.evaluate("() => localStorage.setItem('i18nextLng', 'id')")
                     return
                 trigger.click()
                 page.wait_for_timeout(300)
@@ -602,6 +619,7 @@ class PacsBrowser:
                         if opt.is_visible():
                             opt.click()
                             page.wait_for_timeout(500)
+                            page.evaluate("() => localStorage.setItem('i18nextLng', 'id')")
                             return
                     except Exception:
                         continue
@@ -711,13 +729,10 @@ class PacsBrowser:
 
     def _ensure_image_report(self) -> None:
         page = self._require_page()
-        current = self._first_visible_text(IMAGE_REPORT_TEXTS)
-        if current is not None:
-            return
-
         modal = page.locator(".ant-modal-content, .ant-modal, body").first
+
         combo = None
-        for selector in (".ant-select-selector", "[role=combobox]"):
+        for selector in (".ant-select-selector", ".ant-select", "[role=combobox]"):
             loc = modal.locator(selector)
             try:
                 for idx in range(min(loc.count(), 5)):
@@ -734,10 +749,29 @@ class PacsBrowser:
             return
 
         try:
+            current_text = combo.inner_text().strip()
+            if any(t in current_text for t in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra")):
+                return
+        except Exception:
+            pass
+
+        try:
             combo.click(timeout=3000)
-            option = self._first_visible_text(IMAGE_REPORT_TEXTS)
+            page.wait_for_timeout(500)
+            dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
+            option = None
+            for text in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra"):
+                loc = dropdown.locator(".ant-select-item-option, .ant-select-item, div").filter(has_text=text)
+                try:
+                    if loc.count() and loc.first.is_visible():
+                        option = loc.first
+                        break
+                except Exception:
+                    continue
+
             if option is not None:
                 option.click(timeout=3000)
+                page.wait_for_timeout(2500)
         except Exception:
             pass
 
@@ -770,6 +804,10 @@ class PacsBrowser:
     ) -> bytes:
         page = self._require_page()
         page.goto(build_viewer_url(self.base_url, study), wait_until="networkidle")
+        try:
+            page.evaluate("() => localStorage.setItem('i18nextLng', 'id')")
+        except Exception:
+            pass
         page.wait_for_timeout(2000)
 
         generate = self._first_visible_text(GENERATE_REPORT_TEXTS)
