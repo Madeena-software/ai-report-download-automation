@@ -26,309 +26,167 @@ Keep this file concise enough to serve as an orientation layer. Prefer reference
 ## Repository identity
 
 **Name:**  
-`<repository-name>`
+`ai-report-download-automation`
 
 **Repository type:**  
-`<application | service | library | monorepo | data pipeline | documentation repository | internal tool | other>`
+`application`
 
 **Primary responsibility:**  
-`<short description of the outcome or system responsibility owned by this repository>`
+`Batch automation for downloading Chest DR AI image reports and viewport screenshots from YiZhun AI-PACS.`
 
 ## Purpose
 
-Describe why this repository exists and what outcome it is responsible for.
-
-Focus on repository-level purpose rather than implementation details.
-
-`<repository-purpose>`
+Automate discovery, viewport screenshot capture, and AI image report PDF downloads for Chest DR studies on YiZhun AI-PACS using browser automation, structured patient-name-based file naming, and JSONL manifest tracking.
 
 ## Current repository state
 
-Describe the repository's current delivery condition.
-
-Examples include:
-
-- greenfield;
-- early implementation;
-- active development;
-- mature;
-- legacy;
-- migration or modernization;
-- maintenance;
-- another repository-specific state.
-
-Record only information that materially affects planning, execution, review, or release decisions.
-
 **Current state:**  
-`<state>`
+`active development`
 
 **Relevant summary:**  
-`<verified summary of the current repository condition>`
-
-Existing repositories MUST reuse valid artifacts and implementation evidence rather than recreating workflow artifacts solely to conform to this template.
+`The PACS batch automation tool has implemented and verified full study discovery, patient-name-based safe file naming, non-scrolling viewport screenshot capture, PDF validation, error retries, and manifest tracking. All 11 unit tests pass.`
 
 ## Intended authority map
 
-Map the intended-authority responsibilities defined by `.agents/software-workflow.md` to the actual approved sources used by this repository.
-
-Physical file locations and artifact structure are repository-defined.
-
 ### Business sources and decisions
 
-- `<path, URL reference, issue, decision record, contract, policy, or other approved source>`
+- `docs/superpowers/specs/2026-08-10-pacs-batch-download-design.md`
 
 ### Product / PRD authority
 
-- `<authoritative product or PRD source>`
+- `docs/superpowers/specs/2026-08-10-pacs-batch-download-design.md`
 
 ### Requirements and matrices
 
-- `<requirement registry, specification, traceability source, dependency source, or equivalent>`
+- `docs/pacs-batch-requirements-and-architecture.md`
 
 ### Architecture and repository policy
 
-- `<architecture specification, ADR location, repository instructions, policy, or equivalent>`
+- `docs/pacs-batch-requirements-and-architecture.md`
+- `.agents/AGENTS.md`
 
 ### Delivery planning
 
-- `<implementation plan, roadmap, Work Package plan, MVP plan, gap register, or equivalent>`
+- `.agents/tasks/pacs-batch-screenshot-and-report-download.md`
 
 ### Release policy
 
-- `<release procedure, deployment policy, operational gate, or equivalent>`
-
-### Other authority
-
-- `<additional repository-specific authoritative sources>`
-
-Do not duplicate authoritative artifacts when references are sufficient.
-
-If an authority-bearing artifact does not yet exist, record that absence rather than silently substituting agent-generated assumptions.
+- `.agents/software-workflow.md` (Section 20: Separate Release Gate)
 
 ## Observed implementation evidence map
 
-Map the repository evidence used to establish what currently exists, what changed, and what has actually been verified.
-
-Relevant evidence MAY include:
-
 ### Source and configuration
 
-- `<source roots, configuration, generated-code boundaries, or other implementation references>`
+- `pacs_batch.py`
+- `.env`
+- `credential.txt` (local non-committed)
 
 ### Data and migrations
 
-- `<migration locations, schema sources, persistence definitions, or equivalent>`
+- `reports/manifest.jsonl`
+- `diagnostics/`
 
 ### Tests and verification
 
-- `<test locations, verification commands, fixtures, integration evidence, or equivalent>`
+- `test_pacs_batch.py` (11 unit tests passing)
+- `python3 pacs_batch.py --help`
 
 ### Version control and CI
 
-- `<Git repository/history reference, CI workflows, status checks, or equivalent>`
+- Git repository on branch `main` (`6c39e2c4a145e4a11b0ec573f96e66902f09a12c`)
 
 ### Runtime and operational evidence
 
-- `<runtime observations, logs, deployed-state evidence, external-system evidence, or equivalent when applicable>`
-
-Observed evidence MUST NOT be treated as intended authority merely because it reflects current behavior.
-
-Approved intended authority MUST NOT be treated as proof that observed implementation already conforms.
+- Local Python 3.12 + Playwright Chromium browser environment.
 
 ## Top-level architecture and boundaries
 
-Summarize only the repository-wide boundaries that an agent should understand before loading more detailed context.
-
-Relevant topics MAY include:
-
-- deployable boundaries;
-- module, service, domain, or package boundaries;
-- data ownership and source-of-truth boundaries;
-- trust and security boundaries;
-- major external systems;
-- major runtime topology;
-- repository-to-repository boundaries;
-- materially important architectural constraints.
-
-`<concise repository-wide architecture and boundary summary>`
-
-Detailed architecture SHOULD remain in its authoritative repository location when one exists.
+Monolithic Python CLI automation script (`pacs_batch.py`) utilizing Playwright for browser interactions against PACS web interface. Standard-library `unittest` suite (`test_pacs_batch.py`). Local file output for PDFs, PNG viewport screenshots, and JSONL manifests.
 
 ## Scoped context
 
-Additional context MAY exist below `.agents/context/` for repository-defined scopes such as:
-
-- modules;
-- services;
-- domains;
-- packages;
-- integrations;
-- applications;
-- infrastructure areas;
-- other meaningful repository boundaries.
-
-Load only the scoped context materially relevant to the current work.
-
-### Available scoped context
-
-- `<scope>` → `<relative-context-path>`
-- `<scope>` → `<relative-context-path>`
-
-Examples:
-
-```text
-Member module       → modules/member/project.md
-Image Gateway       → modules/image-gateway/project.md
-Billing service     → services/billing/project.md
-External PACS       → integrations/pacs/project.md
-```
-
-The hierarchy under `.agents/context/` is repository-defined.
-
-A deeper scoped context file does not implicitly override repository-level context or authoritative repository sources.
-
-Material contradictions MUST be verified against repository authority before use.
+None currently required beyond repository level.
 
 ## Delivery state
 
-Record the currently verified software-delivery state.
-
-This section is an orientation summary, not a replacement for authoritative delivery-planning artifacts.
-
 ### Current delivery objective
 
-`<MVP-oriented objective | Work-Package-oriented objective | maintenance objective | other>`
+`PACS batch output completion`
 
 ### Current Work Package / MVP / delivery slice
 
-`<identifier or description, if applicable>`
+`PACS batch screenshot capture and report download`
 
 ### Quality-gate state
 
-Record only gates that have been verified from repository evidence.
-
-Use the canonical gate states from `.agents/software-workflow.md`:
-
-`pending`, `in_review`, `blocked`, `passed`, `reopened`, or `not_applicable` with recorded rationale.
-
-If a gate has not yet been reliably assessed, record that fact outside the canonical gate-state value rather than inventing a new gate state.
-
 | Gate | Status | Evidence / authority |
 |---|---|---|
-| B0 — Business Framing | `<pending | in_review | blocked | passed | reopened | not_applicable>` | `<reference or rationale>` |
-| P1 — Product Definition | `<status>` | `<reference or rationale>` |
-| R2 — Requirements Traceability | `<status>` | `<reference or rationale>` |
-| A3 — Architecture Clarity | `<status>` | `<reference or rationale>` |
-| D4 — Delivery Readiness | `<status>` | `<reference or rationale>` |
-| T5 — Task Readiness | `<status>` | `<reference or rationale>` |
-| E6 — Execution Verification | `<status>` | `<reference or rationale>` |
-| V7 — Implementation Review | `<status>` | `<reference or rationale>` |
-| R8 — Remediation Closure | `<status>` | `<reference or rationale>` |
-| A9 — Baseline Acceptance | `<status>` | `<reference or rationale>` |
-| G10 — Release Approval | `<status>` | `<reference or rationale>` |
+| B0 — Business Framing | `passed` | `docs/superpowers/specs/2026-08-10-pacs-batch-download-design.md` |
+| P1 — Product Definition | `passed` | `docs/superpowers/specs/2026-08-10-pacs-batch-download-design.md` |
+| R2 — Requirements Traceability | `passed` | `docs/pacs-batch-requirements-and-architecture.md` |
+| A3 — Architecture Clarity | `passed` | `docs/pacs-batch-requirements-and-architecture.md` |
+| D4 — Delivery Readiness | `passed` | PACS batch screenshot and report download objective bounded |
+| T5 — Task Readiness | `passed` | `.agents/tasks/pacs-batch-screenshot-and-report-download.md` @ `d2490677d839c7a2044a3948174517858a9f3a98` |
+| E6 — Execution Verification | `passed` | 11 unit tests passed, CLI help verified, git diff check clean |
+| V7 — Implementation Review | `passed` | Review verdict ACCEPTED for commit `6c39e2c4a145e4a11b0ec573f96e66902f09a12c` |
+| R8 — Remediation Closure | `not_applicable` | No remediation required |
+| A9 — Baseline Acceptance | `passed` | `6c39e2c4a145e4a11b0ec573f96e66902f09a12c` |
+| G10 — Release Approval | `pending` | Separate Release Gate under `.agents/software-workflow.md` |
 
 **Earliest unmet or materially unreliable gate:**  
-`<gate-id and reason>`
+`G10 — Release Approval (Separate Release Gate)`
 
 ### Active task(s)
 
-For Draft planning work, the immutable publication revision MAY still be unresolved.
-
-Any task recorded as `Validated/Published`, `In Execution`, `Review Required`, or `Remediation Required` MUST identify the exact immutable governing task revision.
-
-Preferred Git-backed identity:
-
-```text
-<task path> @ <full Git commit SHA containing the governing task content>
-```
-
-- `<task identity, lifecycle state, and governing immutable revision when required>`
+- `.agents/tasks/pacs-batch-screenshot-and-report-download.md` @ `d2490677d839c7a2044a3948174517858a9f3a98` (Status: `Accepted`)
 
 ### Blocking items
 
-- `<blocking dependency, decision, approval, or gap>`
-
-Non-blocking items should remain visible only when they materially affect downstream planning or execution.
+- None.
 
 ## Accepted baseline
 
-Record the current accepted immutable repository revision.
-
-For Git repositories, prefer the full commit SHA.
-
-If no accepted baseline can be reliably established, record `unknown` explicitly and treat the uncertainty according to its delivery impact. Do not invent or infer an accepted baseline from the current branch tip alone.
-
 **Accepted baseline:**  
-`<immutable repository revision>`
+`6c39e2c4a145e4a11b0ec573f96e66902f09a12c`
 
 **Accepted scope:**  
-`<short description of what this baseline is known to satisfy>`
+`PACS batch screenshot capture, safe patient-name-based file naming, PDF validation, JSONL manifest logging, and 11 unit tests.`
 
 **Evidence reference:**  
-`<review, CI, acceptance record, or other supporting evidence>`
-
-Branch names, tags, or labels MAY be recorded for convenience but MUST NOT replace the immutable revision used for execution and review.
+`Unit tests passed (11/11), CLI verification passed, git diff check clean, review verdict ACCEPTED.`
 
 ## Known gaps and open decisions
 
-Record only unresolved items that materially affect repository orientation or delivery.
-
-Detailed gap registers, ADRs, requirement matrices, or decision logs SHOULD remain in their authoritative repository locations when they already exist.
-
 ### Blocking
 
-- `<item>`
-  - owner: `<owner>`
-  - impact: `<impact>`
-  - resolution trigger: `<trigger>`
+- None.
 
 ### Non-blocking
 
-- `<item>`
-  - owner: `<owner>`
-  - impact: `<impact>`
-  - resolution trigger: `<trigger or latest stage by which it must be resolved>`
-
-Do not convert unresolved decisions into implementation assumptions.
+- Production release/deployment approval remains open under separate Release Gate (G10).
 
 ## Repository conventions
 
-Record repository-specific conventions and constraints that materially affect planning, execution, review, or release.
-
-Examples MAY include:
-
-- repository structure conventions;
-- module ownership rules;
-- testing expectations;
-- migration constraints;
-- generated-code boundaries;
-- dependency policies;
-- API compatibility constraints;
-- deployment restrictions;
-- security or privacy constraints;
-- prohibited operational practices.
-
-`<repository-specific conventions>`
-
-Do not reproduce generic software-engineering methodology here.
+- Python 3.12 with standard library + `playwright`.
+- `pacs_batch.py` is the single CLI executable.
+- `test_pacs_batch.py` contains unit tests runnable via `python3 -m unittest -v test_pacs_batch`.
+- `reports/` directory stores PDFs, PNG screenshots, and `manifest.jsonl`.
+- Credentials kept strictly local in `credential.txt` / `.env` and never logged or committed.
 
 ## Context verification
 
-This context is supporting, refreshable repository knowledge.
-
-Before relying on a material claim, reverify it when this context is missing, stale, contradictory, or inconsistent with authoritative repository sources or observed implementation reality.
-
 **Last verified:**  
-`<date-time or date>`
+`2026-08-10`
 
 **Verified against repository revision:**  
-`<immutable revision when applicable>`
+`6c39e2c4a145e4a11b0ec573f96e66902f09a12c`
 
 **Verified sources:**  
-
-- `<source>`
-- `<source>`
+- `.agents/AGENTS.md`
+- `.agents/software-workflow.md`
+- `.agents/tasks/pacs-batch-screenshot-and-report-download.md`
+- `pacs_batch.py`
+- `test_pacs_batch.py`
 
 **Known verification limitations:**  
-
-- `<limitation or "None known">`
+- None known.
