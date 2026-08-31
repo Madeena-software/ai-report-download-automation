@@ -10,6 +10,8 @@ from pacs_batch import (
     atomic_save_pdf,
     build_manifest_record,
     build_viewer_url,
+    canvas_metrics_ready,
+    download_with_retries,
     extract_studies_from_hrefs,
     extract_studies_from_json,
     load_credentials,
@@ -23,6 +25,80 @@ from pacs_batch import (
 
 
 class TestPacsBatchOffline(unittest.TestCase):
+    def test_blank_large_pdf_does_not_prove_radiograph_readiness(self) -> None:
+        blank_large_pdf = b"%PDF-1.4\n" + b"x" * 60000 + b"\n%%EOF\n"
+        validate_pdf_bytes(blank_large_pdf)
+        self.assertFalse(
+            canvas_metrics_ready(
+                {
+                    "visible": True,
+                    "width": 800,
+                    "height": 600,
+                    "alpha_fraction": 0.0,
+                    "luminance_range": 0,
+                    "tone_bins": 1,
+                }
+            )
+        )
+
+    def test_rendered_canvas_metrics_are_ready(self) -> None:
+        self.assertTrue(
+            canvas_metrics_ready(
+                {
+                    "visible": True,
+                    "width": 800,
+                    "height": 600,
+                    "alpha_fraction": 1.0,
+                    "luminance_range": 240,
+                    "tone_bins": 16,
+                }
+            )
+        )
+
+    def test_render_readiness_retries_then_succeeds(self) -> None:
+        class Browser:
+            attempts = 0
+
+            def download_report(self, study: Study, screenshot_path: Path) -> bytes:
+                self.attempts += 1
+                screenshot_path.write_bytes(b"png")
+                if self.attempts == 1:
+                    raise RuntimeError("radiograph is not ready")
+                return b"%PDF-1.4\n" + b"x" * 1020 + b"\n%%EOF\n"
+
+            def capture_diagnostic(self, study: Study, attempt: int, error: Exception) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            record = download_with_retries(
+                Browser(),
+                Study(sid=1, ai_calc_id=2),
+                output_dir=tmpdir,
+                retries=2,
+                overwrite=False,
+            )
+        self.assertEqual(record["status"], "succeeded")
+        self.assertEqual(record["attempts"], 2)
+
+    def test_persistent_render_readiness_failure_is_failed(self) -> None:
+        class Browser:
+            def download_report(self, study: Study, screenshot_path: Path) -> bytes:
+                raise RuntimeError("radiograph is not ready")
+
+            def capture_diagnostic(self, study: Study, attempt: int, error: Exception) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            record = download_with_retries(
+                Browser(),
+                Study(sid=1, ai_calc_id=2),
+                output_dir=tmpdir,
+                retries=2,
+                overwrite=False,
+            )
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["attempts"], 2)
+
     def test_load_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             dir_path = Path(tmpdir)

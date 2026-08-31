@@ -269,6 +269,21 @@ def validate_pdf_bytes(data: bytes) -> None:
         raise ValueError("Missing PDF EOF marker")
 
 
+def canvas_metrics_ready(metrics: dict[str, Any]) -> bool:
+    """Return whether sampled canvas metrics prove a rendered radiograph."""
+    try:
+        return (
+            bool(metrics["visible"])
+            and float(metrics["width"]) >= 100
+            and float(metrics["height"]) >= 100
+            and float(metrics["alpha_fraction"]) >= 0.05
+            and float(metrics["luminance_range"]) >= 16
+            and int(metrics["tone_bins"]) >= 4
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def safe_filename(value: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     cleaned = cleaned.strip(". ")
@@ -773,30 +788,55 @@ class PacsBrowser:
         page = self._require_page()
         modal = page.locator(".ant-modal-content").first
         combo = modal.locator(".ant-select-selector, .ant-select").first
+        combo.click(timeout=5000)
+        page.wait_for_timeout(500)
+        dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
+        pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra", re.I)
+        option = dropdown.locator(".ant-select-item-option, .ant-select-item-option-content, .ant-select-item").filter(has_text=pattern).first
+        option.click(timeout=5000)
 
-        try:
-            combo.click(timeout=5000)
-            page.wait_for_timeout(500)
-            dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
-            pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra", re.I)
-            option = dropdown.locator(".ant-select-item-option, .ant-select-item-option-content, .ant-select-item").filter(has_text=pattern).first
-            option.click(timeout=5000)
-            # Wait for modal canvas to be populated with real content
-            # (canvas.width > 100 means it's initialised; we then wait
-            #  an extra 8s so the DICOM X-Ray fully renders inside it)
-            try:
-                page.wait_for_function(
-                    """() => {
-                        const c = document.querySelector('.ant-modal-content canvas');
-                        return c && c.width > 100 && c.height > 100;
-                    }""",
-                    timeout=15000,
-                )
-            except Exception:
-                pass
-            page.wait_for_timeout(8000)
-        except Exception:
-            pass
+        # Controlled fixtures: blank alpha=0/range=0/bins=1 and rendered
+        # alpha=1/range=240/bins=16. The conservative lower bounds require
+        # visible initialized pixels, at least four 16-level tone bins, and
+        # a 16-level luminance range before a report can be downloaded.
+        page.wait_for_function(
+            """() => {
+                const c = document.querySelector('.ant-modal-content canvas');
+                if (!c) return false;
+                const rect = c.getBoundingClientRect();
+                if (rect.width < 100 || rect.height < 100 || c.width < 100 || c.height < 100) {
+                    return false;
+                }
+                const sample = document.createElement('canvas');
+                sample.width = 32;
+                sample.height = 32;
+                const sampleContext = sample.getContext('2d', {willReadFrequently: true});
+                if (!sampleContext) return false;
+                try {
+                    sampleContext.drawImage(c, 0, 0, 32, 32);
+                    const pixels = sampleContext.getImageData(0, 0, 32, 32).data;
+                    let visible = 0;
+                    let minimum = 255;
+                    let maximum = 0;
+                    const bins = new Set();
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        const alpha = pixels[i + 3];
+                        if (alpha > 8) visible += 1;
+                        const luminance = Math.round(
+                            0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]
+                        );
+                        minimum = Math.min(minimum, luminance);
+                        maximum = Math.max(maximum, luminance);
+                        bins.add(Math.floor(luminance / 16));
+                    }
+                    return visible / (pixels.length / 4) >= 0.05 &&
+                        maximum - minimum >= 16 && bins.size >= 4;
+                } catch (_) {
+                    return false;
+                }
+            }""",
+            timeout=15000,
+        )
 
     def read_captured_pdf(self) -> bytes:
         page = self._require_page()
