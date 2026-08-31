@@ -229,3 +229,87 @@ using `--all` or compensating with unrelated studies.
 The Executor returns non-sensitive verification evidence and stops. A
 Planner/Reviewer evaluates this exact published task revision and the private
 execution evidence; task completion is not release authorization.
+
+## Remediation — Blank Radiograph False-Positive Prevention
+
+**Review basis:** `160b9d98fb9bf1f0c302403d62c034f87d0aac1b`
+
+### Objective
+
+A report MUST NOT return `succeeded` merely because the captured PDF is
+structurally valid and larger than the current size threshold. Before clicking
+Download Report, the automation MUST establish that the selected Image Report
+contains an actually rendered radiograph. If readiness cannot be established,
+the attempt MUST fail and use the existing retry and diagnostic mechanism.
+
+### Required corrections
+
+1. Image Report selection and readiness MUST fail closed. Failures to find or
+   select Image Report, confirm the relevant report view, or establish
+   radiograph render readiness MUST NOT be silently ignored.
+2. Before download, require a visible radiograph canvas with meaningful
+   dimensions; zero-size, hidden, placeholder-size, and uninitialized canvases
+   MUST be rejected.
+3. Before download, require conservative evidence of non-trivial rendered
+   image content rather than a blank/default canvas. The detection method and
+   threshold are Executor engineering decisions, MUST be supported by
+   controlled valid-versus-blank evidence, and MUST document their rationale
+   in implementation evidence. Arbitrary intuition-only thresholds are not
+   sufficient.
+4. Any readiness failure MUST raise into the existing retry path. Exhausted
+   readiness failures MUST produce `failed`, never `succeeded`.
+5. Preserve authentication, discovery, explicit target selection, Generate
+   Report, Blob capture, PDF structural validation, atomic writes, manifest,
+   screenshot/diagnostic behavior, and the targeted 45-study boundary. The
+   >50 KB threshold MAY remain as a secondary sanity check, but MUST NOT be
+   treated as evidence that the radiograph exists.
+
+### Regression coverage
+
+Automated coverage MUST prove that:
+
+- a structurally valid PDF larger than 50 KB with a blank/unready radiograph
+  is rejected and cannot return a successful report result;
+- a valid rendered Image Report passes readiness and continues normal download;
+- a temporary blank/unready render retries and may succeed on a later valid
+  render;
+- a persistently blank/unready render exhausts retries and is represented as
+  `failed` in the manifest; and
+- all existing non-remediation tests remain passing.
+
+### Post-review real-PACS verification
+
+Live PACS verification is deferred until implementation review accepts the
+remediation. The later verification stage MUST first rerun only the two
+previously confirmed blank-radiograph cases from private review evidence. For
+each case, require a valid PDF, successful structural validation, and visual
+evidence that the radiograph is present before accepting `succeeded`. If either
+case still produces a blank radiograph, STOP and do not rerun all 45 studies.
+
+Only after that two-case validation is accepted MAY a separately authorized
+execution rerun or revalidate the complete 45-study target set. This task does
+not automatically authorize that full-batch rerun.
+
+### Additional acceptance criteria
+
+- [ ] Image Report selection and readiness are fail closed.
+- [ ] Blank or uninitialized radiograph canvases cannot reach `succeeded`.
+- [ ] PDF byte size alone cannot establish report completeness.
+- [ ] Non-trivial radiograph rendering is verified before download.
+- [ ] Readiness failures use existing retry handling.
+- [ ] Exhausted readiness failures produce `failed`.
+- [ ] The >50 KB blank-report regression is rejected.
+- [ ] A valid rendered-report regression passes.
+- [ ] Existing report/PDF behavior remains compatible.
+- [ ] No unrelated PACS, MPIPS, DICOM, demographic, date, or report-layout
+  behavior is changed.
+
+### Remediation verification requirements
+
+Require current branch/HEAD/status, implementation diff inspection, focused
+regression tests, `python3 -m unittest -v test_pacs_batch`, and the repository's
+customary syntax/static checks, with exact observed results and no skipped
+failing checks represented as PASS. Implementation MUST NOT begin if safe
+radiograph detection requires a material architecture change, a new unjustified
+heavy dependency, PACS server changes, or scope expansion into MPIPS/DICOM/date
+remediation.
