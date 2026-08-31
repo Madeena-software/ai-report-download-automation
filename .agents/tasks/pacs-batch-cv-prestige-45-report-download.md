@@ -277,6 +277,45 @@ Automated coverage MUST prove that:
   `failed` in the manifest; and
 - all existing non-remediation tests remain passing.
 
+### Remediation implementation authorization
+
+For the Blank Radiograph False-Positive Prevention remediation only, the
+earlier task restrictions classifying repository implementation changes as out
+of scope or not authorized are superseded to the minimum extent required to
+implement and verify this remediation.
+
+Authorized during the remediation implementation phase:
+
+- bounded changes to `pacs_batch.py` necessary to make Image Report readiness
+  fail closed;
+- bounded changes to `test_pacs_batch.py` and directly related existing test
+  fixtures/helpers necessary for regression coverage;
+- local test and static-check execution;
+- local diagnostics and fixtures that contain no real PHI; and
+- one local implementation commit after successful verification, if otherwise
+  permitted by repository workflow.
+
+Preserve existing authentication, discovery, exact-target selection,
+report-generation flow except for readiness validation, Blob capture, PDF
+structural validation, retry/diagnostic behavior, manifest format, and privacy
+boundaries.
+
+Still NOT authorized during implementation:
+
+- live PACS login or report rerun;
+- Generate Report against real patients;
+- real patient artifact download;
+- Google Drive mutation;
+- DICOM mutation or upload;
+- MPIPS, date, or demographic remediation;
+- unrelated refactoring;
+- dependency installation unless separately approved;
+- push, PR/issue mutation, deployment, or release.
+
+The existing post-review two-case live PACS verification gate remains
+unchanged and requires separate Planner/Reviewer authorization after
+implementation review.
+
 ### Post-review real-PACS verification
 
 Live PACS verification is deferred until implementation review accepts the
