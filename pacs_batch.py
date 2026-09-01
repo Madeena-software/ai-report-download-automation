@@ -291,6 +291,17 @@ def report_type_is_image(selected_text: str) -> bool:
     ) and not bool(re.search(r"Text Report", selected_text, re.I))
 
 
+def select_pointer_target(select: Any) -> Any:
+    """Choose the visible Ant Select wrapper for pointer interaction."""
+    selector = select.locator(".ant-select-selector").first
+    try:
+        if selector.count() and selector.is_visible():
+            return selector
+    except Exception:
+        pass
+    return select
+
+
 def safe_filename(value: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     cleaned = cleaned.strip(". ")
@@ -796,8 +807,7 @@ class PacsBrowser:
         modal = page.locator(".ant-modal-content").first
         select = modal.locator(".ant-select").first
         combo = select.locator('[role="combobox"]').first
-        combo_to_click = combo if combo.count() else select
-        combo_to_click.click(timeout=5000)
+        select_pointer_target(select).click(timeout=5000)
         page.wait_for_timeout(500)
         control_id = combo.get_attribute("aria-controls") if combo.count() else select.get_attribute("aria-controls")
         pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra|图像报告", re.I)

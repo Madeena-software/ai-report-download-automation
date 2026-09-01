@@ -17,6 +17,7 @@ from pacs_batch import (
     load_credentials,
     parse_explicit_studies,
     report_type_is_image,
+    select_pointer_target,
     report_filename,
     safe_filename,
     screenshot_filename,
@@ -26,6 +27,63 @@ from pacs_batch import (
 
 
 class TestPacsBatchOffline(unittest.TestCase):
+    def test_visible_selector_is_pointer_target_not_inner_combobox(self) -> None:
+        class Target:
+            def __init__(self, visible: bool) -> None:
+                self.first = self
+                self.visible = visible
+                self.click_kwargs = None
+
+            def count(self) -> int:
+                return 1
+
+            def is_visible(self) -> bool:
+                return self.visible
+
+            def click(self, **kwargs: object) -> None:
+                self.click_kwargs = kwargs
+
+        class Select:
+            def __init__(self) -> None:
+                self.selector = Target(visible=True)
+                self.combo = Target(visible=True)
+
+            def locator(self, query: str) -> Target:
+                return self.selector if query == ".ant-select-selector" else self.combo
+
+        select = Select()
+        target = select_pointer_target(select)
+        target.click(timeout=5000)
+        self.assertIs(target, select.selector)
+        self.assertIsNotNone(select.selector.click_kwargs)
+        self.assertIsNone(select.combo.click_kwargs)
+        self.assertNotIn("force", select.selector.click_kwargs)
+
+    def test_inner_combobox_remains_aria_controls_source(self) -> None:
+        class Combo:
+            first = None
+
+            def get_attribute(self, name: str) -> str:
+                self.requested = name
+                return "report-select-list"
+
+        combo = Combo()
+        self.assertEqual(combo.get_attribute("aria-controls"), "report-select-list")
+        self.assertEqual(combo.requested, "aria-controls")
+
+    def test_outer_select_fallback_when_selector_is_unavailable(self) -> None:
+        class Outer:
+            first = None
+
+            def locator(self, query: str):
+                return self
+
+            def count(self) -> int:
+                return 0
+
+        select = Outer()
+        self.assertIs(select_pointer_target(select), select)
+
     def test_image_report_selection_confirmation(self) -> None:
         for label in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra"):
             self.assertTrue(report_type_is_image(label))
