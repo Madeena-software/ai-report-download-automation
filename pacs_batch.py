@@ -284,6 +284,13 @@ def canvas_metrics_ready(metrics: dict[str, Any]) -> bool:
         return False
 
 
+def report_type_is_image(selected_text: str) -> bool:
+    """Return whether a selected report-type label positively names Image Report."""
+    return bool(
+        re.search(r"Image Report|影像报告|Laporan Gambar|Laporan Citra|图像报告", selected_text, re.I)
+    ) and not bool(re.search(r"Text Report", selected_text, re.I))
+
+
 def safe_filename(value: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     cleaned = cleaned.strip(". ")
@@ -787,13 +794,46 @@ class PacsBrowser:
     def _ensure_image_report(self) -> None:
         page = self._require_page()
         modal = page.locator(".ant-modal-content").first
-        combo = modal.locator(".ant-select-selector, .ant-select").first
-        combo.click(timeout=5000)
+        select = modal.locator(".ant-select").first
+        combo = select.locator('[role="combobox"]').first
+        combo_to_click = combo if combo.count() else select
+        combo_to_click.click(timeout=5000)
         page.wait_for_timeout(500)
-        dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
-        pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra", re.I)
-        option = dropdown.locator(".ant-select-item-option, .ant-select-item-option-content, .ant-select-item").filter(has_text=pattern).first
+        control_id = combo.get_attribute("aria-controls") if combo.count() else select.get_attribute("aria-controls")
+        pattern = re.compile(r"Image Report|影像报告|Laporan Gambar|Laporan Citra|图像报告", re.I)
+        if control_id:
+            dropdown = page.locator(f"#{control_id}")
+        else:
+            dropdowns = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
+            candidates = []
+            for index in range(dropdowns.count()):
+                candidate = dropdowns.nth(index)
+                if candidate.locator('[role="option"]').filter(has_text=pattern).count() == 1:
+                    candidates.append(candidate)
+            if len(candidates) != 1:
+                raise RuntimeError("Could not uniquely identify the Image Report dropdown")
+            dropdown = candidates[0]
+        option = dropdown.locator('[role="option"]').filter(has_text=pattern).first
         option.click(timeout=5000)
+
+        page.wait_for_function(
+            """() => {
+                const modal = document.querySelector('.ant-modal-content');
+                if (!modal) return false;
+                const selected = modal.querySelector('.ant-select-selection-item') ||
+                    modal.querySelector('[role="combobox"]');
+                if (!selected) return false;
+                const text = [
+                    selected.textContent,
+                    selected.getAttribute('title'),
+                    selected.getAttribute('aria-label'),
+                    selected.getAttribute('value'),
+                ].filter(Boolean).join(' ');
+                return /Image Report|影像报告|Laporan Gambar|Laporan Citra|图像报告/i.test(text) &&
+                    !/Text Report/i.test(text);
+            }""",
+            timeout=15000,
+        )
 
         # Controlled fixtures: blank alpha=0/range=0/bins=1 and rendered
         # alpha=1/range=240/bins=16. The conservative lower bounds require

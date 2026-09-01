@@ -16,6 +16,7 @@ from pacs_batch import (
     extract_studies_from_json,
     load_credentials,
     parse_explicit_studies,
+    report_type_is_image,
     report_filename,
     safe_filename,
     screenshot_filename,
@@ -25,6 +26,20 @@ from pacs_batch import (
 
 
 class TestPacsBatchOffline(unittest.TestCase):
+    def test_image_report_selection_confirmation(self) -> None:
+        for label in ("Image Report", "影像报告", "Laporan Gambar", "Laporan Citra"):
+            self.assertTrue(report_type_is_image(label))
+        self.assertFalse(report_type_is_image("Text Report"))
+        self.assertFalse(report_type_is_image("Text Report Image Report"))
+
+    def test_delayed_image_report_selection_eventually_confirms(self) -> None:
+        states = iter(("Text Report", "Text Report", "Image Report"))
+        selected = next((state for state in states if report_type_is_image(state)), None)
+        self.assertEqual(selected, "Image Report")
+
+    def test_stale_dropdown_click_does_not_confirm_selection(self) -> None:
+        self.assertFalse(report_type_is_image("Text Report"))
+
     def test_blank_large_pdf_does_not_prove_radiograph_readiness(self) -> None:
         blank_large_pdf = b"%PDF-1.4\n" + b"x" * 60000 + b"\n%%EOF\n"
         validate_pdf_bytes(blank_large_pdf)
